@@ -67,19 +67,62 @@ By profiling the Median Centroids and analyzing feature deviation, we mapped the
 ---
 
 ## **4. Model Selection & Hyperparameter Tuning**
-We evaluated 8 distinct algorithms (Logistic Regression, Random Forest, XGBoost, LightGBM, CatBoost, ExtraTrees, KNN, MLP) to establish a baseline. Evaluation relied strictly on **Macro F1** (to ensure fairness to the 3% minority class) and **Log Loss** (to measure probability confidence).
 
-**Bayesian Optimization (Optuna):**
-The top 3 tree-based models were subjected to rigorous hyperparameter tuning to minimize Log Loss ("Beat the Default" heuristic). 
+The objective of this phase was to construct a **Supervised Surrogate Model** capable of predicting the K-Means clusters with near-perfect accuracy. A highly accurate model proves that the clusters are mathematically distinct (not just random noise) and authorizes the use of SHAP for business interpretation.
 
-**Final Tuned Leaderboard (Top 3):**
-| Rank | Model | Macro F1 | Log Loss | Confidence Lift (vs. Default) |
+### **4.1. Phase A: Algorithm Benchmarking (The Leaderboard)**
+We designed a comprehensive experiment to test **8 distinct machine learning algorithms** across the entire complexity spectrum. This ensured our final selection was data-driven, not assumed.
+
+*   **The Baseline (Linearity Test):** Logistic Regression.
+*   **Distance-Based (K-Means Mimicry):** K-Nearest Neighbors (KNN).
+*   **Neural Architecture:** Multi-Layer Perceptron (MLP).
+*   **Ensemble (Bagging):** Random Forest, Extra Trees.
+*   **Ensemble (Gradient Boosting):** XGBoost, LightGBM, CatBoost.
+
+**Evaluation Metric Strategy:**
+Given the severe class imbalance (Cluster 2 represents only 3%), standard Accuracy was discarded. Models were ranked using:
+1.  **Macro F1-Score (Primary):** Ensures mathematical fairness. The model is penalized heavily if it ignores the minority VIP class.
+2.  **Log Loss (Secondary):** Measures the *confidence* of the predictions (Cross-Entropy). Lower is better.
+
+**Phase A Results (The Dominance of Boosting):**
+The "Big Three" gradient boosting machines monopolized the leaderboard, achieving near-perfect classification on the Validation Set:
+*   **CatBoost:** Macro F1 (0.9985) | Log Loss (0.0134)
+*   **LightGBM:** Macro F1 (0.9980) | Log Loss (0.0097)
+*   **XGBoost:** Macro F1 (0.9979) | Log Loss (0.0092)
+
+*Insight:* Even the simple Logistic Regression achieved 96.5% F1, proving the K-Means clusters have strong geometric separation. However, the Boosting models captured the final ~3% of non-linear edge cases perfectly.
+
+### **4.2. Phase B: Bayesian Hyperparameter Optimization (Optuna)**
+To extract maximum performance and ensure the models were not overfitting, the Top 3 candidates (CatBoost, LightGBM, XGBoost) were advanced to the tuning phase.
+
+**Tuning Methodology:**
+*   **Framework:** We abandoned inefficient Grid Search in favor of **Tree-structured Parzen Estimator (TPE)** via the **Optuna** library.
+*   **Target Objective:** We optimized strictly for **Log Loss**. Since F1-Score was already maxed out (~99.8%), the goal was to force the models to become mathematically "certain" of their predictions.
+*   **The "Beat the Default" Heuristic:** We utilized Optuna's `enqueue_trial` feature to force the optimizer to evaluate the default hyperparameters as Trial 0. This guaranteed the tuned model would never perform *worse* than the baseline.
+
+**The Optimization Search Space:**
+Each model underwent **30 targeted trials**, focusing on their specific architectural sensitivities:
+*   *CatBoost:* `depth`, `l2_leaf_reg`, `random_strength`.
+*   *LightGBM:* Constraining `num_leaves` relative to `max_depth` to prevent explosion, plus heavy `reg_alpha`/`reg_lambda`.
+*   *XGBoost:* Aggressive `gamma` regularization vs. deep trees (`max_depth` up to 10).
+
+### **4.3. Phase C: The Final Champion Selection**
+The tuned models were re-trained and evaluated. The results demonstrated a massive improvement in **Probability Calibration (Confidence Lift)**, even as the F1-Scores remained rock-solid.
+
+**Final Tuned Leaderboard:**
+
+| Rank | Model | Tuned Macro F1 | Tuned Log Loss | **Confidence Lift (Drop in Error)** |
 | :--- | :--- | :--- | :--- | :--- |
 | **1** | **LightGBM (Champion)** | **0.9980** | **0.0080** | **+17.1%** |
 | 2 | XGBoost | 0.9981 | 0.0084 | +8.6% |
 | 3 | CatBoost | 0.9984 | 0.0088 | +34.6% |
 
-$\Rightarrow$ **Implication:** LightGBM achieved the "Holy Trinity" of Machine Learning: Highest Confidence (lowest error), Perfect Stability, and High Computational Efficiency. The 99.8% accuracy proves the clusters are deterministic, validating the surrogate approach.
+**The Winning Architecture:**
+**LightGBM** was selected as the final Champion Model for the Interpretability Phase (Task 6). 
+*   **Why?** It achieved the "Holy Trinity" of Machine Learning: 
+    1.  **Highest Confidence:** The absolute lowest Log Loss (0.0080).
+    2.  **Perfect Stability:** Zero degradation in Macro F1-Score during the aggressive regularization process.
+    3.  **Computational Efficiency:** It trained significantly faster than CatBoost or XGBoost, making it the optimal engine for the computationally expensive SHAP value calculations that follow.
 
 ---
 
@@ -119,6 +162,7 @@ By contrasting our Supervised approach with standard Unsupervised methodologies,
     *   `Data Engineering_Splitting.ipynb`: Augmentation, Missing value handling, and Stratified Partitioning.
     *   `Model Selection_Train_Tune.ipynb`: Algorithm benchmarking and Optuna optimization.
     *   `Interpretability_Feature Importance (SHAP).ipynb`: SHAP value extraction, Lean Model validation, and Comparative Strategy.
+    *   `custom_template.py`: Plotly self-created theme to import for using.
 
 ---
 **Tech Stack:** `Python`, `Pandas`, `Scikit-Learn`, `LightGBM`, `XGBoost`, `CatBoost`, `Optuna`, `SHAP`, `Plotly`, `Matplotlib`.
